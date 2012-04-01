@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using System.Web.Http;
 using SignalR.Hubs;
 
-namespace SignalR.AspNetWebApi.Hosting.AspNet.Samples.Api.Controllers
+namespace SignalR.AspNetWebApi.Samples.Api.Controllers
 {
     [HubName("values")]
     public class ValuesConnectedController : ConnectedApiController, IConnected
@@ -19,45 +19,58 @@ namespace SignalR.AspNetWebApi.Hosting.AspNet.Samples.Api.Controllers
         // GET /api/<controller>
         public IEnumerable<string> Get()
         {
-            Clients.called(HubContext.ConnectionId, "get", Interlocked.Increment(ref _getCalls));
-            return new string[] { "value1", "value2" };
+            Caller.echo("get");
+            Clients.called("get", Interlocked.Increment(ref _getCalls));
+            return new [] { "value1", "value2" };
         }
 
         // GET /api/<controller>/5
         public string Get(int id)
         {
-            Clients.called(HubContext.ConnectionId, "get", Interlocked.Increment(ref _getCalls));
+            Caller.echo("get");
+            Clients.called("get", Interlocked.Increment(ref _getCalls));
             return "value";
         }
 
         // POST /api/<controller>
         public void Post(string value)
         {
-            Clients.called(HubContext.ConnectionId, "post", Interlocked.Increment(ref _postCalls));
+            Caller.echo("post");
+            Clients.called("post", Interlocked.Increment(ref _postCalls));
         }
 
         // PUT /api/<controller>/5
         public void Put(int id, string value)
         {
-            Clients.called(HubContext.ConnectionId, "put", Interlocked.Increment(ref _putCalls));
+            Caller.echo("put");
+            Clients.called("put", Interlocked.Increment(ref _putCalls));
         }
 
         // DELETE /api/<controller>/5
         public void Delete(int id)
         {
-            Clients.called(HubContext.ConnectionId, "del", Interlocked.Increment(ref _deleteCalls));
+            Caller.echo("delete");
+            Clients.called("del", Interlocked.Increment(ref _deleteCalls));
         }
 
         // PATCH /api/<controller>/5
         [AcceptVerbs("PATCH")]
         public void Patch(int id, string value)
         {
-            Clients.called(HubContext.ConnectionId, "patch", Interlocked.Increment(ref _patchCalls));
+            Caller.echo("patch");
+            Clients.called("patch", Interlocked.Increment(ref _patchCalls));
         }
 
         Task IConnected.Connect()
         {
-            Caller.setCallStats(new { get = _getCalls, post = _postCalls, put = _putCalls, del = _deleteCalls, patch = _patchCalls });
+            Caller.setCallStats(new
+                {
+                    get = _getCalls,
+                    post = _postCalls,
+                    put = _putCalls,
+                    del = _deleteCalls,
+                    patch = _patchCalls
+                });
             return Task.Factory.Done();
         }
 

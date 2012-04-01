@@ -6,7 +6,7 @@ using System.Web.Http;
 using System.Web.Security;
 using System.Web.SessionState;
 
-namespace SignalR.AspNetWebApi.Hosting.AspNet.Samples
+namespace SignalR.AspNetWebApi.Samples
 {
     public class Global : System.Web.HttpApplication
     {

@@ -5,12 +5,12 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("SignalR.AspNetWebApi.Hosting.AspNet.Samples")]
+[assembly: AssemblyTitle("SignalR.AspNetWebApi.Samples")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Microsoft")]
-[assembly: AssemblyProduct("SignalR.AspNetWebApi.Hosting.AspNet.Samples")]
-[assembly: AssemblyCopyright("Copyright © Microsoft 2012")]
+[assembly: AssemblyCompany("Damian Edwards, David Fowler")]
+[assembly: AssemblyProduct("SignalR.AspNetWebApi.Samples")]
+[assembly: AssemblyCopyright("Copyright © Damian Edwards, David Fowler 2012")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

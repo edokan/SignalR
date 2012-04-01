@@ -73,7 +73,7 @@
     <Compile Include="..\Common\CommonAssemblyInfo.cs">
       <Link>Properties\CommonAssemblyInfo.cs</Link>
     </Compile>
-    <Compile Include="ConnectedApiControllerBase.cs" />
+    <Compile Include="ConnectedApiController.cs" />
     <Compile Include="CookieCollection.cs" />
     <Compile Include="HttpContentExtensions.cs" />
     <Compile Include="HttpRequestHeadersExtensions.cs" />
@@ -81,6 +81,10 @@
     <Compile Include="WebApiRequest.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\SignalR.Hosting.Common\SignalR.Hosting.Common.csproj">
+      <Project>{3b71f0ae-d4b6-4f47-bf62-333d45615673}</Project>
+      <Name>SignalR.Hosting.Common</Name>
+    </ProjectReference>
     <ProjectReference Include="..\SignalR\SignalR.csproj">
       <Project>{1b9a82c4-bca1-4834-a33e-226f17be070b}</Project>
       <Name>SignalR</Name>

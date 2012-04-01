@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace SignalR.AspNetWebApi.Hosting.AspNet.Samples
+namespace SignalR.AspNetWebApi.Samples
 {
     public static class TaskFactoryExtensions
     {

@@ -8,35 +8,46 @@ using SignalR.Infrastructure;
 
 namespace SignalR.AspNetWebApi
 {
-    public abstract class ConnectedApiControllerBase : ApiController, IHub
+    public abstract class ConnectedApiController : ApiController, IHub
     {
-        private readonly IDependencyResolver _dependencyResolver;
+        private readonly IDependencyResolver _resolver;
 
-        public ConnectedApiControllerBase(IDependencyResolver dependencyResolver)
+        public ConnectedApiController()
+            : this(SignalR.Global.DependencyResolver)
         {
-            if (dependencyResolver == null)
+
+        }
+
+        public ConnectedApiController(IDependencyResolver resolver)
+        {
+            if (resolver == null)
             {
-                throw new ArgumentNullException("dependencyResolver");
+                throw new ArgumentNullException("resolver");
             }
 
-            _dependencyResolver = dependencyResolver;
+            _resolver = resolver;
         }
 
         protected override void Initialize(HttpControllerContext controllerContext)
         {
             var hub = ((IHub)this);
             
+            var hubName = this.GetType().FullName;
+            var hubManager = _resolver.Resolve<IHubManager>();
+            var descriptor = hubManager.EnsureHub(hubName);
+
             var user = controllerContext.Request.GetUserPrincipal();
+
             // Response parameter is null here because outgoing broadcast messages will always go
             // via the SignalR intrinsics, and method return values via the Web API intrinsics.
             var hostContext = new HostContext(new WebApiRequest(controllerContext.Request), null, user);
             var connectionId = hostContext.Request.QueryString["connectionId"];
             hub.Context = new HubContext(hostContext, connectionId);
-            var hubName = this.GetType().FullName;
-            var connection = _dependencyResolver.Resolve<IConnectionManager>().GetConnection<HubDispatcher>();
+            
+            var connection = _resolver.Resolve<IConnectionManager>().GetConnection<HubDispatcher>();
             var state = new TrackingDictionary();
-            var agent = new ClientAgent(connection, hubName);
-            hub.Caller = new SignalAgent(connection, connectionId, hubName, state);
+            var agent = new ClientAgent(connection, descriptor.Name);
+            hub.Caller = new SignalAgent(connection, connectionId, descriptor.Name, state);
             hub.Agent = agent;
             hub.GroupManager = agent;
             
