@@ -132,14 +132,23 @@
                 transport.start(connection, function () {
                     connection.transport = transport;
                     $(connection).trigger(events.onStart);
+
+                    $(window).unload(function () {
+                        connection.stop(false /* async */);
+                    });
+
                 }, function () {
                     initialize(transports, index + 1);
                 });
             };
 
             window.setTimeout(function () {
-                $.ajax(connection.url + "/negotiate", {
+                var url = connection.url + "/negotiate";
+                log("Negotiating with '" + url + "'.");
+                $.ajax({
+                    url: url,
                     global: false,
+                    cache: false,
                     type: "GET",
                     data: {},
                     dataType: connection.ajaxDataType,
@@ -281,12 +290,13 @@
             return connection;
         },
 
-        stop: function () {
+        stop: function (async) {
             /// <summary>Stops listening</summary>
             /// <returns type="signalR" />
             var connection = this;
 
             if (connection.transport) {
+                connection.transport.abort(connection, async);
                 connection.transport.stop(connection);
                 connection.transport = null;
             }
@@ -357,7 +367,8 @@
 
             var url = connection.url + "/send" + "?transport=" + connection.transport.name + "&connectionId=" + window.escape(connection.id);
             url = this.addQs(url, connection);
-            $.ajax(url, {
+            $.ajax({
+                url: url,
                 global: false,
                 type: "POST",
                 dataType: connection.ajaxDataType,
@@ -381,7 +392,28 @@
                 }
             });
         },
+        ajaxAbort: function (connection, async) {
+            if (typeof (connection.transport) === "undefined") {
+                return;
+            }
 
+            // Async by default unless explicitly overidden
+            async = typeof async === "undefined" ? true : async;
+
+            var url = connection.url + "/abort" + "?transport=" + connection.transport.name + "&connectionId=" + window.escape(connection.id);
+            url = this.addQs(url, connection);
+            $.ajax({
+                url: url,
+                async: async,
+                timeout: 1000,
+                global: false,
+                type: "POST",
+                dataType: connection.ajaxDataType,
+                data: {}
+            });
+
+            log("Fired ajax abort async = " + async);
+        },
         processMessages: function (connection, data) {
             var $connection = $(connection);
 
@@ -391,9 +423,6 @@
 
                     // Disconnected by the server
                     connection.stop();
-
-                    // Trigger the disconnect event
-                    $connection.trigger(events.onDisconnect);
                     return;
                 }
 
@@ -454,9 +483,18 @@
                     }
                     else {
                         // Determine the protocol
-                        protocol = document.location.protocol === "https:" ? "wss://" : "ws://";
+                        var info = document.location;
+                        if (info.protocol !== "http:" && info.protocol !== "https:") {
+                            // If the url isn't isn't http or https, use the specified url instead of 
+                            // the document url.
+                            // REVIEW: We need to make sure connection.url is absolute
+                            var info = document.createElement('a');
+                            info.href = connection.url;
+                        }
 
-                        url = protocol + document.location.host + connection.appRelativeUrl;
+                        protocol = info.protocol === "https:" ? "wss://" : "ws://";
+
+                        url = protocol + info.host + connection.appRelativeUrl;
                     }
 
                     // Build the url
@@ -467,9 +505,11 @@
                         url += "?transport=webSockets&connectionId=" + connection.id;
                     }
 
+                    log("Connecting to websocket endpoint '" + url + "'");
                     connection.socket = new window.WebSocket(url);
                     connection.socket.onopen = function () {
                         opened = true;
+                        log("Websocket opened");
                         if (onSuccess) {
                             onSuccess();
                         }
@@ -480,11 +520,13 @@
                             if (onFailed) {
                                 onFailed();
                             }
+                            log("Websocket closed");
                         } else if (typeof event.wasClean != "undefined" && event.wasClean === false) {
                             // Ideally this would use the websocket.onerror handler (rather than checking wasClean in onclose) but
                             // I found in some circumstances Chrome won't call onerror. This implementation seems to work on all browsers.
                             $(connection).trigger(events.onError);
                             // TODO: Support reconnect attempt here, need to ensure last message id, groups, and connection data go up on reconnect
+                            log("Unclean disconnect from websocket");
                         }
                         connection.socket = null;
                     };
@@ -517,6 +559,9 @@
                     connection.socket.close();
                     connection.socket = null;
                 }
+            },
+
+            abort: function (connection) {
             }
         },
 
@@ -534,11 +579,13 @@
                     connectTimeOut;
 
                 if (connection.eventSource) {
+                    log("The connection already has an event source. Stopping it.");
                     connection.stop();
                 }
 
                 if (!window.EventSource) {
                     if (onFailed) {
+                        log("This browser doesn't support SSE.");
                         onFailed();
                     }
                     return;
@@ -549,6 +596,7 @@
                 url = transportLogic.getUrl(connection, this.name, reconnecting);
 
                 try {
+                    log("Attempting to connect to SSE endpoint '" + url + "'");
                     connection.eventSource = new window.EventSource(url);
                 }
                 catch (e) {
@@ -669,6 +717,9 @@
                     connection.eventSource = null;
                     delete connection.eventSource;
                 }
+            },
+            abort: function (connection, async) {
+                transportLogic.ajaxAbort(connection, async);
             }
         },
 
@@ -687,6 +738,7 @@
                 if (window.EventSource) {
                     // If the browser supports SSE, don't use Forever Frame
                     if (onFailed) {
+                        log("This brower supports SSE, skipping Forever Frame.");
                         onFailed();
                     }
                     return;
@@ -701,6 +753,7 @@
                 frame.prop("src", url);
                 transportLogic.foreverFrame.connections[frameId] = connection;
 
+                log("Binding to iframe's readystatechange event.");
                 frame.bind("readystatechange", function () {
                     if ($.inArray(this.readyState, ["loaded", "complete"]) >= 0) {
                         log("Forever frame iframe readyState changed to " + this.readyState + ", reconnecting", connection.logging);
@@ -721,6 +774,7 @@
                 // and raise on failed
                 connectTimeOut = window.setTimeout(function () {
                     if (connection.onSuccess) {
+                        log("Failed to connect using forever frame source, it timed out after " + that.timeOut + "ms.");
                         that.stop(connection);
 
                         if (onFailed) {
@@ -735,6 +789,7 @@
                 window.setTimeout(function () {
                     var frame = connection.frame,
                         src = transportLogic.getUrl(connection, that.name, true) + "&frameId=" + connection.frameId;
+                    log("Upating iframe src to '" + src + "'.");
                     frame.src = src;
                 }, connection.reconnectDelay);
             },
@@ -758,7 +813,12 @@
                     connection.frameId = null;
                     delete connection.frame;
                     delete connection.frameId;
+                    log("Stopping forever frame");
                 }
+            },
+
+            abort: function (connection, async) {
+                transportLogic.ajaxAbort(connection, async);
             },
 
             getConnection: function (id) {
@@ -786,8 +846,11 @@
             start: function (connection, onSuccess, onFailed) {
                 /// <summary>Starts the long polling connection</summary>
                 /// <param name="connection" type="signalR">The SignalR connection to start</param>
-                var that = this;
+                var that = this,
+                    initialConnectFired = false;
+
                 if (connection.pollXhr) {
+                    log("Polling xhr requests already exists, aborting.");
                     connection.stop();
                 }
 
@@ -803,20 +866,25 @@
                             reconnectTimeOut = null,
                             reconnectFired = false;
 
-                        instance.pollXhr = $.ajax(url, {
+                        log("Attempting to connect to '" + url + "' using longPolling.");
+                        instance.pollXhr = $.ajax({
+                            url: url,
                             global: false,
-
                             type: "GET",
-
                             dataType: connection.ajaxDataType,
-
                             success: function (data) {
                                 var delay = 0,
                                     timedOutReceived = false;
 
+                                if (initialConnectFired == false) {
+                                    onSuccess();
+                                    initialConnectFired = true;
+                                }
+
                                 if (raiseReconnect === true) {
                                     // Fire the reconnect event if it hasn't been fired as yet
                                     if (reconnectFired === false) {
+                                        log("Raising the reconnect event");
                                         $(instance).trigger(events.onReconnect);
                                         reconnectFired = true;
                                     }
@@ -833,6 +901,10 @@
                                     timedOutReceived = data.TimedOut;
                                 }
 
+                                if (data && data.Disconnect) {
+                                    return;
+                                }
+
                                 if (delay > 0) {
                                     window.setTimeout(function () {
                                         poll(instance, timedOutReceived);
@@ -844,11 +916,14 @@
 
                             error: function (data, textStatus) {
                                 if (textStatus === "abort") {
+                                    log("Aborted xhr requst.");
                                     return;
                                 }
 
+                                log("An error occurred using longPolling " + data);
+
                                 if (reconnectTimeOut) {
-                                    // If the request failed then we clear the timeout so that the 
+                                    // If the request failed then we clear the timeout so that the
                                     // reconnect event doesn't get fired
                                     clearTimeout(reconnectTimeOut);
                                 }
@@ -874,9 +949,14 @@
                     } (connection));
 
                     // Now connected
-                    // There's no good way know when the long poll has actually started so 
+                    // There's no good way know when the long poll has actually started so
                     // we assume it only takes around 150ms (max) to start the connection
-                    window.setTimeout(onSuccess, 150);
+                    window.setTimeout(function () {
+                        if (initialConnectFired === false) {
+                            onSuccess();
+                            initialConnectFired = true;
+                        }
+                    }, 150);
 
                 }, 250); // Have to delay initial poll so Chrome doesn't show loader spinner in tab
             },
@@ -893,6 +973,9 @@
                     connection.pollXhr = null;
                     delete connection.pollXhr;
                 }
+            },
+            abort: function (connection, async) {
+                transportLogic.ajaxAbort(connection, async);
             }
         }
     };

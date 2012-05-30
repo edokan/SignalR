@@ -2,9 +2,10 @@
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Net;
+using System.Security.Principal;
 using System.Threading;
+using System.Threading.Tasks;
 using SignalR.Hosting.Common;
-
 using IClientRequest = SignalR.Client.Http.IRequest;
 
 namespace SignalR.Hosting.Memory
@@ -91,6 +92,18 @@ namespace SignalR.Hosting.Memory
         {
             get;
             private set;
+        }
+
+        public IPrincipal User
+        {
+            get
+            {
+                return Thread.CurrentPrincipal;
+            }
+        }
+
+        public void AcceptWebSocketRequest(Func<IWebSocket, Task> callback)
+        {
         }
     }
 }

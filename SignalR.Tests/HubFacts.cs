@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading;
+using SignalR.Client.Hubs;
 using SignalR.Hosting.Memory;
 using Xunit;
 
@@ -71,5 +73,62 @@ namespace SignalR.Tests
 
             Assert.Equal("Exception of type 'System.Exception' was thrown.", ex.GetBaseException().Message);
         } 
+
+        [Fact]
+        public void Overloads()
+        {
+            var host = new MemoryHost();
+            host.MapHubs();
+            var connection = new Client.Hubs.HubConnection("http://foo/");
+
+            var hub = connection.CreateProxy("demo");
+
+            connection.Start(host).Wait();
+
+            hub.Invoke("Overload").Wait();
+            int n = hub.Invoke<int>("Overload", 1).Result;
+
+            Assert.Equal(1, n);
+        }
+
+        [Fact]
+        public void UnsupportedOverloads()
+        {
+            var host = new MemoryHost();
+            host.MapHubs();
+            var connection = new Client.Hubs.HubConnection("http://foo/");
+
+            var hub = connection.CreateProxy("demo");
+
+            connection.Start(host).Wait();
+
+            var ex = Assert.Throws<InvalidOperationException>(() => hub.Invoke("UnsupportedOverload", 13177).Wait());
+
+            Assert.Equal("'UnsupportedOverload' method could not be resolved.", ex.GetBaseException().Message);
+        }
+
+        [Fact]
+        public void ChangeHubUrl()
+        {
+            var host = new MemoryHost();
+            host.MapHubs("/foo");
+            var connection = new Client.Hubs.HubConnection("http://site/foo", useDefaultUrl: false);
+
+            var hub = connection.CreateProxy("demo");
+
+            var wh = new ManualResetEvent(false);
+
+            hub.On("signal", id =>
+            {
+                Assert.NotNull(id);
+                wh.Set();
+            });
+            
+            connection.Start(host).Wait();
+
+            hub.Invoke("DynamicTask").Wait();
+
+            Assert.True(wh.WaitOne(TimeSpan.FromSeconds(5)));
+        }
     }
 }

@@ -20,17 +20,43 @@ namespace SignalR
 
             Register(typeof(ITraceManager), () => traceManager.Value);
 
+            var serverIdManager = new ServerIdManager();
+            Register(typeof(IServerIdManager), () => serverIdManager);
+
+            var serverMessageHandler = new Lazy<IServerCommandHandler>(() => new ServerCommandHandler(this));
+            Register(typeof(IServerCommandHandler), () => serverMessageHandler.Value);
+
             var messageBus = new Lazy<InProcessMessageBus>(() => new InProcessMessageBus(this));
 
             Register(typeof(IMessageBus), () => messageBus.Value);
 
-            var serializer = new JsonConvertAdapter();
+            var serializer = new Lazy<JsonConvertAdapter>();
 
-            Register(typeof(IJsonSerializer), () => serializer);
+            Register(typeof(IJsonSerializer), () => serializer.Value);
+            
+            var connectionIdGenerator = new GuidConnectionIdGenerator();
+            Register(typeof(IConnectionIdGenerator), () => connectionIdGenerator);
+
+            var transportManager = new Lazy<TransportManager>(() => new TransportManager(this));
+            Register(typeof(ITransportManager), () => transportManager.Value);
+
+            var configurationManager = new DefaultConfigurationManager();
+            Register(typeof(IConfigurationManager), () => configurationManager);
+
+            var transportHeartbeat = new Lazy<TransportHeartBeat>(() => new TransportHeartBeat(this));
+            Register(typeof(ITransportHeartBeat), () => transportHeartbeat.Value);
+
+            var connectionManager = new Lazy<ConnectionManager>(() => new ConnectionManager(this));
+            Register(typeof(IConnectionManager), () => connectionManager.Value);
 
             // Hubs
-            var actionDescriptorProvider = new Lazy<ReflectedMethodDescriptorProvider>();
-            Register(typeof(IMethodDescriptorProvider), () => actionDescriptorProvider.Value);
+            RegisterHubExtensions();
+        }
+
+        private void RegisterHubExtensions()
+        {
+            var methodDescriptorProvider = new Lazy<ReflectedMethodDescriptorProvider>();
+            Register(typeof(IMethodDescriptorProvider), () => methodDescriptorProvider.Value);
 
             var hubDescriptorProvider = new Lazy<ReflectedHubDescriptorProvider>(() => new ReflectedHubDescriptorProvider(this));
             Register(typeof(IHubDescriptorProvider), () => hubDescriptorProvider.Value);
@@ -47,20 +73,8 @@ namespace SignalR
             var proxyGenerator = new Lazy<DefaultJavaScriptProxyGenerator>(() => new DefaultJavaScriptProxyGenerator(this));
             Register(typeof(IJavaScriptProxyGenerator), () => proxyGenerator.Value);
 
-            var connectionIdGenerator = new GuidConnectionIdGenerator();
-            Register(typeof(IConnectionIdGenerator), () => connectionIdGenerator);
-
-            var transportManager = new Lazy<TransportManager>(() => new TransportManager(this));
-            Register(typeof(ITransportManager), () => transportManager.Value);
-
-            var configurationManager = new DefaultConfigurationManager();
-            Register(typeof(IConfigurationManager), () => configurationManager);
-
-            var transportHeartbeat = new Lazy<TransportHeartBeat>(() => new TransportHeartBeat(this));
-            Register(typeof(ITransportHeartBeat), () => transportHeartbeat.Value);
-
-            var connectionManager = new Lazy<ConnectionManager>(() => new ConnectionManager(this));
-            Register(typeof(IConnectionManager), () => connectionManager.Value);
+            var requestParser = new Lazy<HubRequestParser>();
+            Register(typeof(IHubRequestParser), () => requestParser.Value);
         }
 
         public virtual object GetService(Type serviceType)

@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
-using SignalR.Infrastructure;
 
 namespace SignalR.Hosting.AspNet
 {
@@ -15,26 +13,33 @@ namespace SignalR.Hosting.AspNet
         private readonly PersistentConnection _connection;
         private readonly IDependencyResolver _resolver;
 
-        private static readonly Lazy<bool> _hasAcceptWebSocketRequest =
-            new Lazy<bool>(() =>
-            {
-                return typeof(HttpContextBase).GetMethods().Any(m => m.Name.Equals("AcceptWebSocketRequest", StringComparison.OrdinalIgnoreCase));
-            });
-        
+        private const string WebSocketVersionServerVariable = "WEBSOCKET_VERSION";
+
         public AspNetHandler(IDependencyResolver resolver, PersistentConnection connection)
         {
             _resolver = resolver;
             _connection = connection;
         }
 
-        public override Task ProcessRequestAsync(HttpContextBase context)
+#if NET45
+        public override Task ProcessRequestAsync(HttpContext context)
         {
-            var request = new AspNetRequest(context.Request);
+            return ProcessRequestAsync(new HttpContextWrapper(context));
+        }
+
+        public Task ProcessRequestAsync(HttpContextBase context)
+#else
+        public override Task ProcessRequestAsync(HttpContextBase context)
+#endif
+
+
+        {
+            var request = new AspNetRequest(context);
             var response = new AspNetResponse(context);
-            var hostContext = new HostContext(request, response, context.User);
+            var hostContext = new HostContext(request, response);
 
             // Determine if the client should bother to try a websocket request
-            hostContext.Items[HostConstants.SupportsWebSockets] = _hasAcceptWebSocketRequest.Value;
+            hostContext.Items[HostConstants.SupportsWebSockets] = !String.IsNullOrEmpty(context.Request.ServerVariables[WebSocketVersionServerVariable]);
 
             // Set the debugging flag
             hostContext.Items[HostConstants.DebugMode] = context.IsDebuggingEnabled;

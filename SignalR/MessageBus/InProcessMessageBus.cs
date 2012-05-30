@@ -344,15 +344,7 @@ namespace SignalR
                 // Remove all the expired ones
                 foreach (var entry in entries)
                 {
-                    var messages = entry.Value.CopyWithLock();
-
-                    foreach (var item in messages)
-                    {
-                        if (item.Expired)
-                        {
-                            entry.Value.RemoveWithLock(item);
-                        }
-                    }
+                    entry.Value.RemoveWithLock(item => item.Expired);
                 }
             }
             catch (Exception ex)
@@ -363,18 +355,6 @@ namespace SignalR
             finally
             {
                 Interlocked.Exchange(ref _gcRunning, 0);
-            }
-        }
-
-        private class BroadcastData
-        {
-            public readonly string EventKey;
-            public readonly InMemoryMessage<T> Message;
-
-            public BroadcastData(string eventKey, InMemoryMessage<T> message)
-            {
-                EventKey = eventKey;
-                Message = message;
             }
         }
     }

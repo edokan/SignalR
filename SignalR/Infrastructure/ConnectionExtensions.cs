@@ -9,8 +9,17 @@ namespace SignalR.Infrastructure
         {
             var command = new SignalCommand
             {
-                Type = CommandType.Disconnect,
-                ExpiresAfter = TimeSpan.FromMinutes(30)
+                Type = CommandType.Disconnect
+            };
+
+            return connection.SendCommand(command);
+        }
+
+        public static Task Abort(this ITransportConnection connection)
+        {
+            var command = new SignalCommand
+            {
+                Type = CommandType.Abort
             };
 
             return connection.SendCommand(command);

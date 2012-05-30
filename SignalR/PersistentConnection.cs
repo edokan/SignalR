@@ -12,6 +12,8 @@ namespace SignalR
     /// </summary>
     public abstract class PersistentConnection
     {
+        private const string WebSocketsTransportName = "webSockets";
+
         protected IMessageBus _messageBus;
         protected IJsonSerializer _jsonSerializer;
         protected IConnectionIdGenerator _connectionIdGenerator;
@@ -20,6 +22,7 @@ namespace SignalR
 
         protected ITraceManager _trace;
         protected ITransport _transport;
+        private IServerCommandHandler _serverMessageHandler;
 
         public virtual void Initialize(IDependencyResolver resolver)
         {
@@ -33,15 +36,25 @@ namespace SignalR
             _jsonSerializer = resolver.Resolve<IJsonSerializer>();
             _transportManager = resolver.Resolve<ITransportManager>();
             _trace = resolver.Resolve<ITraceManager>();
+            _serverMessageHandler = resolver.Resolve<IServerCommandHandler>();
 
             _initialized = true;
         }
 
-        // Static events intended for use when measuring performance
-        public static event Action Sending;
+        /// <summary>
+        /// Occurs when a data is received from a connection.
+        /// </summary>
         public static event Action Receiving;
-        public static event Action<string> ClientConnected;
-        public static event Action<string> ClientDisconnected;
+
+        /// <summary>
+        /// Occurs when a new connection is established.
+        /// </summary>
+        public static event Action<string> Connected;
+
+        /// <summary>
+        /// Occurs when an existing connection ends.
+        /// </summary>
+        public static event Action<string> Disconnected;
 
         /// <summary>
         /// Gets the <see cref="IConnection"/> for the <see cref="PersistentConnection"/>.
@@ -69,6 +82,16 @@ namespace SignalR
             }
         }
 
+        /// <summary>
+        /// Handles all requests for <see cref="PersistentConnection"/>s.
+        /// </summary>
+        /// <param name="context">The <see cref="HostContext"/> for the current request.</param>
+        /// <returns>A <see cref="Task"/> that completes when the <see cref="PersistentConnection"/> pipeline is complete.</returns>
+        /// <exception cref="T:System.InvalidOperationException">
+        /// Thrown if connection wasn't initialized.
+        /// Thrown if the transport wasn't specified.
+        /// Thrown if the connection id wasn't specified.
+        /// </exception>
         public virtual Task ProcessRequestAsync(HostContext context)
         {
             if (!_initialized)
@@ -103,6 +126,17 @@ namespace SignalR
             Connection = connection;
             Groups = new GroupManager(connection, DefaultSignal);
 
+            _transport.TransportConnected = () =>
+            {
+                var command = new ServerCommand
+                {
+                    Type = ServerCommandType.RemoveConnection,
+                    Value = connectionId
+                };
+
+                return _serverMessageHandler.SendCommand(command);
+            };
+
             _transport.Connected = () =>
             {
                 return OnConnectedAsync(context.Request, connectionId);
@@ -115,7 +149,7 @@ namespace SignalR
 
             _transport.Received = data =>
             {
-                return OnReceivedAsync(connectionId, data);
+                return OnReceivedAsync(context.Request, connectionId, data);
             };
 
             _transport.Error = OnErrorAsync;
@@ -139,6 +173,11 @@ namespace SignalR
                                   _trace);
         }
 
+        /// <summary>
+        /// Returns the default signals for the <see cref="PersistentConnection"/>.
+        /// </summary>
+        /// <param name="connectionId">The id of the incoming connection.</param>
+        /// <returns>The default signals for this <see cref="PersistentConnection"/>.</returns>
         protected IEnumerable<string> GetDefaultSignals(string connectionId)
         {
             // The list of default signals this connection cares about:
@@ -158,43 +197,62 @@ namespace SignalR
             };
         }
 
+        /// <summary>
+        /// Called when a new connection is made.
+        /// </summary>
+        /// <param name="request">The <see cref="IRequest"/> for the current connection.</param>
+        /// <param name="connectionId">The id of the connecting client.</param>
+        /// <returns>A <see cref="Task"/> that completes when the connect operation is complete.</returns>
         protected virtual Task OnConnectedAsync(IRequest request, string connectionId)
         {
             OnClientConnected(connectionId);
             return TaskAsyncHelper.Empty;
         }
 
+        /// <summary>
+        /// Called when a connection reconnects after a timeout.
+        /// </summary>
+        /// <param name="request">The <see cref="IRequest"/> for the current connection.</param>
+        /// <param name="groups">The groups the calling connection is a part of.</param>
+        /// <param name="connectionId">The id of the re-connecting client.</param>
+        /// <returns>A <see cref="Task"/> that completes when the re-connect operation is complete.</returns>
         protected virtual Task OnReconnectedAsync(IRequest request, IEnumerable<string> groups, string connectionId)
         {
             return TaskAsyncHelper.Empty;
         }
 
-        protected virtual Task OnReceivedAsync(string connectionId, string data)
+        /// <summary>
+        /// Called when data is received from a connection.
+        /// </summary>
+        /// <param name="request">The <see cref="IRequest"/> for the current connection.</param>
+        /// <param name="connectionId">The id of the connection sending the data.</param>
+        /// <param name="data">The payload sent to the connection.</param>
+        /// <returns>A <see cref="Task"/> that completes when the receive operation is complete.</returns>
+        protected virtual Task OnReceivedAsync(IRequest request, string connectionId, string data)
         {
             OnReceiving();
             return TaskAsyncHelper.Empty;
         }
 
+        /// <summary>
+        /// Called when a connection disconnects.
+        /// </summary>
+        /// <param name="connectionId">The id of the disconnected connection.</param>
+        /// <returns>A <see cref="Task"/> that completes when the disconnect operation is complete.</returns>
         protected virtual Task OnDisconnectAsync(string connectionId)
         {
             OnClientDisconnected(connectionId);
             return TaskAsyncHelper.Empty;
         }
 
-        protected virtual Task OnErrorAsync(Exception e)
+        /// <summary>
+        /// Called when there's an error on the connection.
+        /// </summary>
+        /// <param name="error">The <see cref="Exception"/> that occurred.</param>
+        /// <returns>A <see cref="Task"/> that completes when the error operation is complete.</returns>
+        protected virtual Task OnErrorAsync(Exception error)
         {
             return TaskAsyncHelper.Empty;
-        }
-
-        /// <summary>
-        /// Sends a message to the incoming connection id associated with the <see cref="PersistentConnection"/>.
-        /// </summary>
-        /// <param name="value">The value to send</param>
-        /// <returns>A task that represents when the send is complete.</returns>
-        public Task Send(object value)
-        {
-            OnSending();
-            return Connection.Send(_transport.ConnectionId, value);
         }
 
         private Task ProcessNegotiationRequest(HostContext context)
@@ -202,8 +260,8 @@ namespace SignalR
             var payload = new
             {
                 Url = context.Request.Url.LocalPath.Replace("/negotiate", ""),
-                ConnectionId = _connectionIdGenerator.GenerateConnectionId(context.Request, context.User),
-                TryWebSockets = context.SupportsWebSockets(),
+                ConnectionId = _connectionIdGenerator.GenerateConnectionId(context.Request),
+                TryWebSockets = _transportManager.SupportsTransport(WebSocketsTransportName) && context.SupportsWebSockets(),
                 WebSocketServerUrl = context.WebSocketServerUrl(),
                 ProtocolVersion = "1.0"
             };
@@ -235,14 +293,6 @@ namespace SignalR
             return _transportManager.GetTransport(context);
         }
 
-        private static void OnSending()
-        {
-            if (Sending != null)
-            {
-                Sending();
-            }
-        }
-
         private static void OnReceiving()
         {
             if (Receiving != null)
@@ -253,17 +303,17 @@ namespace SignalR
 
         private static void OnClientConnected(string id)
         {
-            if (ClientConnected != null)
+            if (Connected != null)
             {
-                ClientConnected(id);
+                Connected(id);
             }
         }
 
         private static void OnClientDisconnected(string id)
         {
-            if (ClientDisconnected != null)
+            if (Disconnected != null)
             {
-                ClientDisconnected(id);
+                Disconnected(id);
             }
         }
     }

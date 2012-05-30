@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Security.Principal;
+using System.Threading;
+using System.Threading.Tasks;
 using Gate;
 using SignalR.Hosting.Common;
 
@@ -63,6 +66,14 @@ namespace SignalR.Hosting.Owin
             private set;
         }
 
+        public IPrincipal User
+        {
+            get
+            {
+                return Thread.CurrentPrincipal;
+            }
+        }
+
         /// <summary>
         /// Based on http://owin.org/spec/owin-1.0.0draft5.html#URIReconstruction
         /// </summary>
@@ -76,6 +87,11 @@ namespace SignalR.Hosting.Owin
             }
 
             return new Uri(url);
-        }        
+        }
+
+        public void AcceptWebSocketRequest(Func<IWebSocket, Task> callback)
+        {
+            
+        }
     }
 }

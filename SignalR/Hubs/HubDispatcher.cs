@@ -6,21 +6,28 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using SignalR.Hosting;
 
 namespace SignalR.Hubs
 {
+    /// <summary>
+    /// Handles all communication over the hubs persistent connection.
+    /// </summary>
     public class HubDispatcher : PersistentConnection
     {
         private IJavaScriptProxyGenerator _proxyGenerator;
         private IHubManager _manager;
+        private IHubRequestParser _requestParser;
         private IParameterResolver _binder;
-        private HostContext _context;
+        private readonly List<HubDescriptor> _hubs = new List<HubDescriptor>();
+        private bool _isDebuggingEnabled;
 
         private readonly string _url;
 
+        /// <summary>
+        /// Initializes an instance of the <see cref="HubDispatcher"/> class.
+        /// </summary>
+        /// <param name="url">The base url of the connection url.</param>
         public HubDispatcher(string url)
         {
             _url = url;
@@ -31,20 +38,24 @@ namespace SignalR.Hubs
             _proxyGenerator = resolver.Resolve<IJavaScriptProxyGenerator>();
             _manager = resolver.Resolve<IHubManager>();
             _binder = resolver.Resolve<IParameterResolver>();
+            _requestParser = resolver.Resolve<IHubRequestParser>();
 
             base.Initialize(resolver);
         }
 
-        protected override Task OnReceivedAsync(string connectionId, string data)
+        /// <summary>
+        /// Processes the hub's incoming method calls.
+        /// </summary>
+        protected override Task OnReceivedAsync(IRequest request, string connectionId, string data)
         {
-            var hubRequest = HubRequest.Parse(data);
+            HubRequest hubRequest = _requestParser.Parse(data);
 
             // Create the hub
             HubDescriptor descriptor = _manager.EnsureHub(hubRequest.Hub);
 
-            JToken[] parameterValues = hubRequest.ParameterValues;
+            IParameterValue[] parameterValues = hubRequest.ParameterValues;
 
-            // Resolve the action
+            // Resolve the method
             MethodDescriptor methodDescriptor = _manager.GetHubMethod(descriptor.Name, hubRequest.Method, parameterValues);
             if (methodDescriptor == null)
             {
@@ -53,12 +64,13 @@ namespace SignalR.Hubs
 
             // Resolving the actual state object
             var state = new TrackingDictionary(hubRequest.State);
-            var hub = CreateHub(descriptor, connectionId, state);
+            var hub = CreateHub(request, descriptor, connectionId, state, throwIfFailedToCreate: true);
+
             Task resultTask;
 
             try
             {
-                // Invoke the action
+                // Invoke the method
                 object result = methodDescriptor.Invoker.Invoke(hub, _binder.ResolveMethodParameters(methodDescriptor, parameterValues));
                 Type returnType = result != null ? result.GetType() : methodDescriptor.ReturnType;
 
@@ -67,7 +79,7 @@ namespace SignalR.Hubs
                     var task = (Task)result;
                     if (!returnType.IsGenericType)
                     {
-                        return task.ContinueWith(t => ProcessResult(state, null, hubRequest, t.Exception))
+                        return task.ContinueWith(t => ProcessResponse(state, null, hubRequest, t.Exception))
                                    .FastUnwrap();
                     }
                     else
@@ -96,16 +108,16 @@ namespace SignalR.Hubs
                 }
                 else
                 {
-                    resultTask = ProcessResult(state, result, hubRequest, null);
+                    resultTask = ProcessResponse(state, result, hubRequest, null);
                 }
             }
             catch (TargetInvocationException e)
             {
-                resultTask = ProcessResult(state, null, hubRequest, e);
+                resultTask = ProcessResponse(state, null, hubRequest, e);
             }
 
             return resultTask
-                .ContinueWith(_ => base.OnReceivedAsync(connectionId, data))
+                .ContinueWith(_ => base.OnReceivedAsync(request, connectionId, data))
                 .FastUnwrap();
         }
 
@@ -118,30 +130,30 @@ namespace SignalR.Hubs
                 return context.Response.EndAsync(_proxyGenerator.GenerateProxy(_url));
             }
 
-            _context = context;
+            _isDebuggingEnabled = context.IsDebuggingEnabled();
 
             return base.ProcessRequestAsync(context);
         }
 
         protected override Task OnConnectedAsync(IRequest request, string connectionId)
         {
-            return ExecuteHubEventAsync<IConnected>(connectionId, hub => hub.Connect());
+            return ExecuteHubEventAsync<IConnected>(request, connectionId, hub => hub.Connect());
         }
 
         protected override Task OnReconnectedAsync(IRequest request, IEnumerable<string> groups, string connectionId)
         {
-            return ExecuteHubEventAsync<IConnected>(connectionId, hub => hub.Reconnect(groups));
+            return ExecuteHubEventAsync<IConnected>(request, connectionId, hub => hub.Reconnect(groups));
         }
 
         protected override Task OnDisconnectAsync(string connectionId)
         {
-            return ExecuteHubEventAsync<IDisconnect>(connectionId, hub => hub.Disconnect());
+            return ExecuteHubEventAsync<IDisconnect>(request: null, connectionId: connectionId, action: hub => hub.Disconnect());
         }
 
-        private Task ExecuteHubEventAsync<T>(string connectionId, Func<T, Task> action) where T : class
+        private Task ExecuteHubEventAsync<T>(IRequest request, string connectionId, Func<T, Task> action) where T : class
         {
             var operations = GetHubsImplementingInterface(typeof(T))
-                .Select(hub => CreateHub(hub, connectionId))
+                .Select(hub => CreateHub(request, hub, connectionId))
                 .OfType<T>()
                 .Select(instance => action(instance).Catch() ?? TaskAsyncHelper.Empty)
                 .ToList();
@@ -172,7 +184,7 @@ namespace SignalR.Hubs
             return tcs.Task;
         }
 
-        public IHub CreateHub(HubDescriptor descriptor, string connectionId, TrackingDictionary state = null)
+        private IHub CreateHub(IRequest request, HubDescriptor descriptor, string connectionId, TrackingDictionary state = null, bool throwIfFailedToCreate = false)
         {
             try
             {
@@ -181,7 +193,7 @@ namespace SignalR.Hubs
                 if (hub != null)
                 {
                     state = state ?? new TrackingDictionary();
-                    hub.Context = new HubCallerContext(_context, connectionId);
+                    hub.Context = new HubCallerContext(request, connectionId);
                     hub.Caller = new StatefulSignalAgent(Connection, connectionId, descriptor.Name, state);
                     var groupManager = new GroupManager(Connection, descriptor.Name);
                     hub.Clients = new ClientAgent(Connection, descriptor.Name);
@@ -194,6 +206,12 @@ namespace SignalR.Hubs
             {
                 _trace.Source.TraceInformation("Error creating hub {0}. " + ex.Message, descriptor.Name);
                 Debug.WriteLine("HubDispatcher: Error creating hub {0}. " + ex.Message, (object)descriptor.Name);
+
+                if (throwIfFailedToCreate)
+                {
+                    throw;
+                }
+
                 return null;
             }
         }
@@ -201,25 +219,25 @@ namespace SignalR.Hubs
         private IEnumerable<HubDescriptor> GetHubsImplementingInterface(Type interfaceType)
         {
             // Get hubs that implement the specified interface
-            return _manager.GetHubs(hub => interfaceType.IsAssignableFrom(hub.Type));
+            return _hubs.Where(hub => interfaceType.IsAssignableFrom(hub.Type));
         }
 
         private Task ProcessTaskResult<T>(TrackingDictionary state, HubRequest request, Task<T> task)
         {
             if (task.IsFaulted)
             {
-                return ProcessResult(state, null, request, task.Exception);
+                return ProcessResponse(state, null, request, task.Exception);
             }
-            return ProcessResult(state, task.Result, request, null);
+            return ProcessResponse(state, task.Result, request, null);
         }
 
-        private Task ProcessResult(TrackingDictionary state, object result, HubRequest request, Exception error)
+        private Task ProcessResponse(TrackingDictionary state, object result, HubRequest request, Exception error)
         {
             var exception = error.Unwrap();
-            string stackTrace = (exception != null && _context.IsDebuggingEnabled()) ? exception.StackTrace : null;
+            string stackTrace = (exception != null && _isDebuggingEnabled) ? exception.StackTrace : null;
             string errorMessage = exception != null ? exception.Message : null;
 
-            var hubResult = new HubResult
+            var hubResult = new HubResponse
             {
                 State = state.GetChanges(),
                 Result = result,
@@ -256,7 +274,13 @@ namespace SignalR.Hubs
         private IEnumerable<string> GetSignals(ClientHubInfo hubInfo, string connectionId)
         {
             // Try to find the associated hub type
-            _manager.EnsureHub(hubInfo.Name);
+            HubDescriptor hubDescriptor = _manager.EnsureHub(hubInfo.Name);
+
+            // Add this to the list of hub desciptors this connection is interested in
+            _hubs.Add(hubDescriptor);
+
+            // Update the name (Issue #344)
+            hubInfo.Name = hubDescriptor.Name;
 
             // Create the signals for hubs
             // 1. The hub name e.g. MyHub
@@ -279,47 +303,6 @@ namespace SignalR.Hubs
             {
                 return Name + "." + unqualifiedName;
             }
-        }
-
-        private class HubResult
-        {
-            public IDictionary<string, object> State { get; set; }
-            public object Result { get; set; }
-            public string Id { get; set; }
-            public string Error { get; set; }
-            public string StackTrace { get; set; }
-        }
-
-        private class HubRequest
-        {
-            private static readonly JToken[] _emptyArgs = new JToken[0];
-
-            public static HubRequest Parse(string data)
-            {
-                var rawRequest = JObject.Parse(data);
-                var request = new HubRequest();
-
-                // TODO: Figure out case insensitivity in JObject.Parse, this should cover our clients for now
-                request.Hub = rawRequest.Value<string>("hub") ?? rawRequest.Value<string>("Hub");
-                request.Method = rawRequest.Value<string>("method") ?? rawRequest.Value<string>("Method");
-                request.Id = rawRequest.Value<string>("id") ?? rawRequest.Value<string>("Id");
-
-                var rawState = rawRequest["state"] ?? rawRequest["State"];
-                request.State = rawState == null ? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) :
-                                           rawState.ToObject<IDictionary<string, object>>();
-
-                var rawArgs = rawRequest["args"] ?? rawRequest["Args"];
-                request.ParameterValues = rawArgs == null ? _emptyArgs :
-                                                    rawArgs.Children().ToArray();
-
-                return request;
-            }
-
-            public string Hub { get; set; }
-            public string Method { get; set; }
-            public JToken[] ParameterValues { get; set; }
-            public IDictionary<string, object> State { get; set; }
-            public string Id { get; set; }
         }
     }
 }

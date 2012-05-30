@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using SignalR.Client.Hubs;
@@ -112,6 +112,29 @@ namespace SignalR.Tests
 
             var hubConnection = new HubConnection("http://fake");
             IHubProxy proxy = hubConnection.CreateProxy("ChatHub");
+            var wh = new ManualResetEvent(false);
+
+            proxy.On("addMessage", data =>
+            {
+                Assert.Equal("hello", data);
+                wh.Set();
+            });
+
+            hubConnection.Start(host).Wait();
+
+            proxy.Invoke("Send", "hello").Wait();
+
+            Assert.True(wh.WaitOne(TimeSpan.FromSeconds(5)));
+        }
+
+        [Fact]
+        public void HubNamesAreNotCaseSensitive()
+        {
+            var host = new MemoryHost();
+            host.MapHubs();
+
+            var hubConnection = new HubConnection("http://fake");
+            IHubProxy proxy = hubConnection.CreateProxy("chatHub");
             var called = false;
 
             proxy.On("addMessage", data =>
@@ -127,6 +150,20 @@ namespace SignalR.Tests
             Assert.True(called);
         }
 
+        [Fact]
+        public void UnableToCreateHubThrowsError()
+        {
+            var host = new MemoryHost();
+            host.MapHubs();
+
+            var hubConnection = new HubConnection("http://fake");
+            IHubProxy proxy = hubConnection.CreateProxy("MyHub2");
+            
+            hubConnection.Start(host).Wait();
+
+            Assert.Throws<MissingMethodException>(() => proxy.Invoke("Send", "hello").Wait());
+        }
+
         private void AssertAggregateException(Action action, string message)
         {
             try
@@ -136,6 +173,19 @@ namespace SignalR.Tests
             catch (AggregateException ex)
             {
                 Assert.Equal(ex.Unwrap().Message, message);
+            }
+        }
+
+        public class MyHub2 : Hub
+        {
+            public MyHub2(int n)
+            {
+
+            }
+
+            public void Send(string value)
+            {
+
             }
         }
 

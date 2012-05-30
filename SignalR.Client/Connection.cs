@@ -148,7 +148,7 @@ namespace SignalR.Client
         /// <returns>A task that represents when the connection has started.</returns>
         public Task Start(IHttpClient httpClient)
         {
-#if WINDOWS_PHONE || SILVERLIGHT
+#if WINDOWS_PHONE || SILVERLIGHT || NETFX_CORE
             return Start(new LongPollingTransport());
 #else
             // Pick the best transport supported by the client
@@ -203,13 +203,13 @@ namespace SignalR.Client
                 // If there's any errors starting then Stop the connection                
                 if (task.IsFaulted)
                 {
-                    tcs.SetException(task.Exception);
                     Stop();
+                    tcs.SetException(task.Exception);
                 }
                 else if (task.IsCanceled)
                 {
-                    tcs.SetCanceled();
                     Stop();
+                    tcs.SetCanceled();
                 }
                 else
                 {

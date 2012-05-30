@@ -50,6 +50,8 @@ namespace SignalR.Tests
             host.DependencyResolver.Register(typeof(MyHub), () => new MyHub(connectWh, disconnectWh));
             var connection = new Client.Hubs.HubConnection("http://foo/");
 
+            connection.CreateProxy("MyHub");
+
             // Maximum wait time for disconnect to fire (3 heart beat intervals)
             var disconnectWait = TimeSpan.FromTicks(host.Configuration.HeartBeatInterval.Ticks * 3);
 
@@ -62,7 +64,7 @@ namespace SignalR.Tests
             Assert.True(disconnectWh.Wait(disconnectWait), "Disconnect never fired");
         }
 
-        [Fact(Skip = "Known issue https://github.com/SignalR/SignalR/issues/69")]
+        [Fact]
         public void FarmDisconnectOnlyRaisesEventOnce()
         {
             // Each node shares the same bus but are indepenent servers
@@ -94,6 +96,8 @@ namespace SignalR.Tests
                 nodes[i].Broadcast(String.Format("From Node {0}: {1}", i, i + 1));
                 Thread.Sleep(TimeSpan.FromSeconds(1));
             }
+
+            connection.Stop();
 
             Thread.Sleep(TimeSpan.FromTicks(timeout.Ticks * nodes.Count));
 
@@ -162,7 +166,7 @@ namespace SignalR.Tests
                 return base.OnDisconnectAsync(connectionId);
             }
 
-            protected override Task OnReceivedAsync(string connectionId, string data)
+            protected override Task OnReceivedAsync(Hosting.IRequest request, string connectionId, string data)
             {
                 return Connection.Broadcast(data);
             }

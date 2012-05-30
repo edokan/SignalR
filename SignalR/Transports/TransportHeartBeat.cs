@@ -7,18 +7,31 @@ using SignalR.Infrastructure;
 
 namespace SignalR.Transports
 {
+    /// <summary>
+    /// Default implementation of <see cref="ITransportHeartBeat"/>.
+    /// </summary>
     public class TransportHeartBeat : ITransportHeartBeat
     {
         private readonly SafeSet<ITrackingConnection> _connections = new SafeSet<ITrackingConnection>(new ConnectionIdEqualityComparer());
         private readonly ConcurrentDictionary<ITrackingConnection, ConnectionMetadata> _connectionMetadata = new ConcurrentDictionary<ITrackingConnection, ConnectionMetadata>(new ConnectionIdEqualityComparer());
         private readonly Timer _timer;
         private readonly IConfigurationManager _configurationManager;
+        private readonly IServerCommandHandler _serverCommandHandler;
+        private readonly string _serverId;
 
         private int _running;
 
+        /// <summary>
+        /// Initializes and instance of the <see cref="TransportHeartBeat"/> class.
+        /// </summary>
+        /// <param name="resolver">The <see cref="IDependencyResolver"/>.</param>
         public TransportHeartBeat(IDependencyResolver resolver)
         {
             _configurationManager = resolver.Resolve<IConfigurationManager>();
+            _serverCommandHandler = resolver.Resolve<IServerCommandHandler>();
+            _serverId = resolver.Resolve<IServerIdManager>().ServerId;
+
+            _serverCommandHandler.Command = ProcessServerCommand;
 
             // REVIEW: When to dispose the timer?
             _timer = new Timer(Beat,
@@ -27,6 +40,26 @@ namespace SignalR.Transports
                                _configurationManager.HeartBeatInterval);
         }
 
+        private void ProcessServerCommand(ServerCommand command)
+        {
+            switch (command.Type)
+            {
+                case ServerCommandType.RemoveConnection:
+                    // Only remove connections if this command didn't originate from the owner
+                    if (!command.IsFromSelf(_serverId))
+                    {
+                        RemoveConnection((string)command.Value);
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Adds a new connection to the list of tracked connections.
+        /// </summary>
+        /// <param name="connection">The connection to be added.</param>
         public void AddConnection(ITrackingConnection connection)
         {
             UpdateConnection(connection);
@@ -41,7 +74,17 @@ namespace SignalR.Transports
             }
         }
 
-        private void RemoveConnection(ITrackingConnection connection)
+        private void RemoveConnection(string connectionId)
+        {
+            // Remove the connection
+            RemoveConnection(new ConnectionReference(connectionId));
+        }
+
+        /// <summary>
+        /// Removes a connection from the list of tracked connections.
+        /// </summary>
+        /// <param name="connection">The connection to remove.</param>
+        public void RemoveConnection(ITrackingConnection connection)
         {
             // Remove the connection and associated metadata
             _connections.Remove(connection);
@@ -49,6 +92,10 @@ namespace SignalR.Transports
             _connectionMetadata.TryRemove(connection, out old);
         }
 
+        /// <summary>
+        /// Updates an existing connection and it's metadata.
+        /// </summary>
+        /// <param name="connection">The connection to be updated.</param>
         public void UpdateConnection(ITrackingConnection connection)
         {
             // Remove and re-add the connection so we have the correct object reference
@@ -56,6 +103,10 @@ namespace SignalR.Transports
             _connections.Add(connection);
         }
 
+        /// <summary>
+        /// Marks an existing connection as active.
+        /// </summary>
+        /// <param name="connection">The connection to mark.</param>
         public void MarkConnection(ITrackingConnection connection)
         {
             // See if there's an old metadata value

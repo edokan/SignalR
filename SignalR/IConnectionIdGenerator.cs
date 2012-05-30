@@ -11,9 +11,8 @@ namespace SignalR
         /// <summary>
         /// Creates a connection id for the current request.
         /// </summary>
-        /// <param name="request">The request</param>
-        /// <param name="user">The current principal</param>
+        /// <param name="request">The <see cref="IRequest"/>.</param>
         /// <returns>A connection id</returns>
-        string GenerateConnectionId(IRequest request, IPrincipal user);
+        string GenerateConnectionId(IRequest request);
     }
 }

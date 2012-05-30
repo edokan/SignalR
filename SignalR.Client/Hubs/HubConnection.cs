@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -7,12 +8,49 @@ using SignalR.Client.Transports;
 
 namespace SignalR.Client.Hubs
 {
+    /// <summary>
+    /// A <see cref="Connection"/> for interacting with Hubs.
+    /// </summary>
     public class HubConnection : Connection
     {
-        private readonly Dictionary<string, HubProxy> _hubs = new Dictionary<string, HubProxy>();
+        private readonly Dictionary<string, HubProxy> _hubs = new Dictionary<string, HubProxy>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HubConnection"/> class.
+        /// </summary>
+        /// <param name="url">The url to connect to.</param>
         public HubConnection(string url)
-            : base(GetUrl(url))
+            : this(url, useDefaultUrl: true)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HubConnection"/> class.
+        /// </summary>
+        /// <param name="url">The url to connect to.</param>
+        /// <param name="useDefaultUrl">Determines if the default "/signalr" path should be appended to the specified url.</param>
+        public HubConnection(string url, bool useDefaultUrl)
+            : base(GetUrl(url, useDefaultUrl))
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HubConnection"/> class.
+        /// </summary>
+        /// <param name="url">The url to connect to.</param>
+        /// <param name="queryString">The query string data to pass to the server.</param>
+        public HubConnection(string url, string queryString)
+            : base(url, queryString)
+        {
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="HubConnection"/> class.
+        /// </summary>
+        /// <param name="url">The url to connect to.</param>
+        /// <param name="queryString">The query string data to pass to the server.</param>
+        public HubConnection(string url, IDictionary<string, string> queryString)
+            : base(url, queryString)
         {
         }
 
@@ -49,7 +87,7 @@ namespace SignalR.Client.Hubs
         }
 
         /// <summary>
-        /// Creates a proxy to the <see cref="Hub"/> with the specified name.
+        /// Creates an <see cref="IHubProxy"/> for the hub with the specified name.
         /// </summary>
         /// <param name="hubName">The name of the hub.</param>
         /// <returns>A <see cref="IHubProxy"/></returns>
@@ -74,13 +112,19 @@ namespace SignalR.Client.Hubs
             return JsonConvert.SerializeObject(data);
         }
 
-        private static string GetUrl(string url)
+        private static string GetUrl(string url, bool useDefaultUrl)
         {
             if (!url.EndsWith("/"))
             {
                 url += "/";
             }
-            return url + "signalr";
+
+            if (useDefaultUrl)
+            {
+                return url + "signalr";
+            }
+
+            return url;
         }
     }
 }
