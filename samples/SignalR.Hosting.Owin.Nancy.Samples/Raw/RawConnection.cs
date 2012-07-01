@@ -31,7 +31,7 @@ namespace SignalR.Hosting.Owin.Nancy.Samples
             return Connection.Broadcast(DateTime.Now + ": " + GetUser(connectionId) + " disconnected");
         }
 
-        protected override Task OnReceivedAsync(string connectionId, string data)
+        protected override Task OnReceivedAsync(IRequest request, string connectionId, string data)
         {
             var serializer = new JavaScriptSerializer();
             var message = serializer.Deserialize<Message>(data);
@@ -47,7 +47,7 @@ namespace SignalR.Hosting.Owin.Nancy.Samples
                     });
                     break;
                 case MessageType.Send:
-                    Send(new
+                    Connection.Send(connectionId, new
                     {
                         type = MessageType.Send,
                         from = GetUser(connectionId),
@@ -58,7 +58,7 @@ namespace SignalR.Hosting.Owin.Nancy.Samples
                     string name = message.Value;
                     _clients[connectionId] = name;
                     _users[name] = connectionId;
-                    Send(new
+                    Groups.Send(connectionId, new
                     {
                         type = MessageType.Join,
                         data = message.Value
@@ -91,7 +91,7 @@ namespace SignalR.Hosting.Owin.Nancy.Samples
                     break;
             }
 
-            return base.OnReceivedAsync(connectionId, data);
+            return base.OnReceivedAsync(request, connectionId, data);
         }
 
         private string GetUser(string connectionId)

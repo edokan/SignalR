@@ -17,7 +17,7 @@ namespace SignalR.Hosting.Owin.Nancy.Samples
             builder
                 .Use(LogToConsole)
                 .UseShowExceptions()
-                .UseSignalR("/signalr")
+                .UseSignalRHubs("/signalr")
                 .UseSignalR<RawConnection>("/Raw/Connection")
                 .RunNancy();
         }
