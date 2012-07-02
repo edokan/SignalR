@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using SignalR.Hosting;
 using SignalR.Infrastructure;
 
 namespace SignalR.Transports
@@ -17,6 +16,9 @@ namespace SignalR.Transports
 
         protected int _isDisconnected;
         private readonly CancellationTokenSource _timeoutTokenSource;
+        private readonly CancellationTokenSource _endTokenSource;
+        private readonly CancellationToken _hostShutdownToken;
+        private readonly CancellationTokenSource _connectionEndToken;
 
         public TransportDisconnectBase(HostContext context, IJsonSerializer jsonSerializer, ITransportHeartBeat heartBeat)
         {
@@ -24,13 +26,12 @@ namespace SignalR.Transports
             _jsonSerializer = jsonSerializer;
             _heartBeat = heartBeat;
             _timeoutTokenSource = new CancellationTokenSource();
+            _endTokenSource = new CancellationTokenSource();
+            _hostShutdownToken = context.HostShutdownToken();
+            Completed = new TaskCompletionSource<object>();
 
-            // Register the callback to cancel this connection
-            var hostShutdownToken = context.HostShutdownToken();
-            if (hostShutdownToken != CancellationToken.None)
-            {
-                hostShutdownToken.Register(_timeoutTokenSource.Cancel);
-            }
+            // Create a token that represents the end of this connection's life
+            _connectionEndToken = CancellationTokenSource.CreateLinkedTokenSource(_timeoutTokenSource.Token, _endTokenSource.Token, _hostShutdownToken);
         }
 
         public string ConnectionId
@@ -39,6 +40,12 @@ namespace SignalR.Transports
             {
                 return _context.Request.QueryString["connectionId"];
             }
+        }
+
+        protected TaskCompletionSource<object> Completed
+        {
+            get;
+            private set;
         }
 
         public IEnumerable<string> Groups
@@ -68,11 +75,11 @@ namespace SignalR.Transports
             get { return _context.Response.IsClientConnected; }
         }
 
-        public CancellationToken TimeoutToken
+        protected CancellationToken ConnectionEndToken
         {
             get
             {
-                return _timeoutTokenSource.Token;
+                return _connectionEndToken.Token;
             }
         }
 
@@ -92,6 +99,14 @@ namespace SignalR.Transports
             }
         }
 
+        public virtual bool SupportsKeepAlive
+        {
+            get
+            {
+                return true;
+            }
+        }
+
         public virtual TimeSpan DisconnectThreshold
         {
             get { return TimeSpan.FromSeconds(5); }
@@ -101,7 +116,7 @@ namespace SignalR.Transports
         {
             get
             {
-                return true;
+                return Context.Request.Url.LocalPath.EndsWith("/connect", StringComparison.OrdinalIgnoreCase);
             }
         }
 
@@ -129,7 +144,6 @@ namespace SignalR.Transports
                 var disconnected = Disconnected; // copy before invoking event to avoid race
                 if (disconnected != null)
                 {
-                    Debug.WriteLine("TransportDisconnectBase: Disconnect fired for connection {0}", (object)ConnectionId);
                     return disconnected().Catch();
                 }
             }
@@ -146,6 +160,16 @@ namespace SignalR.Transports
         {
         }
 
+        public void End()
+        {
+            _endTokenSource.Cancel();
+        }
+
+        public void CompleteRequest()
+        {
+            Completed.TrySetResult(null);
+        }
+
         protected ITransportConnection Connection { get; set; }
 
         protected HostContext Context
@@ -156,6 +180,11 @@ namespace SignalR.Transports
         protected ITransportHeartBeat HeartBeat
         {
             get { return _heartBeat; }
+        }
+
+        public Uri Url
+        {
+            get { return _context.Request.Url; }
         }
     }
 }

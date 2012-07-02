@@ -6,7 +6,6 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Threading.Tasks;
-using SignalR.Hosting;
 
 namespace SignalR.Hubs
 {
@@ -33,6 +32,14 @@ namespace SignalR.Hubs
             _url = url;
         }
 
+        protected override TraceSource Trace
+        {
+            get
+            {
+                return _trace["SignalR.HubDispatcher"];
+            }
+        }
+        
         public override void Initialize(IDependencyResolver resolver)
         {
             _proxyGenerator = resolver.Resolve<IJavaScriptProxyGenerator>();
@@ -53,7 +60,7 @@ namespace SignalR.Hubs
             // Create the hub
             HubDescriptor descriptor = _manager.EnsureHub(hubRequest.Hub);
 
-            IParameterValue[] parameterValues = hubRequest.ParameterValues;
+            IJsonValue[] parameterValues = hubRequest.ParameterValues;
 
             // Resolve the method
             MethodDescriptor methodDescriptor = _manager.GetHubMethod(descriptor.Name, hubRequest.Method, parameterValues);
@@ -194,9 +201,8 @@ namespace SignalR.Hubs
                 {
                     state = state ?? new TrackingDictionary();
                     hub.Context = new HubCallerContext(request, connectionId);
-                    hub.Caller = new StatefulSignalAgent(Connection, connectionId, descriptor.Name, state);
-                    var groupManager = new GroupManager(Connection, descriptor.Name);
-                    hub.Clients = new ClientAgent(Connection, descriptor.Name);
+                    hub.Caller = new StatefulSignalProxy(Connection, connectionId, descriptor.Name, state);
+                    hub.Clients = new ClientProxy(Connection, descriptor.Name);
                     hub.Groups = new GroupManager(Connection, descriptor.Name);
                 }
 
@@ -204,8 +210,7 @@ namespace SignalR.Hubs
             }
             catch (Exception ex)
             {
-                _trace.Source.TraceInformation("Error creating hub {0}. " + ex.Message, descriptor.Name);
-                Debug.WriteLine("HubDispatcher: Error creating hub {0}. " + ex.Message, (object)descriptor.Name);
+                Trace.TraceInformation("Error creating hub {0}. " + ex.Message, descriptor.Name);
 
                 if (throwIfFailedToCreate)
                 {
