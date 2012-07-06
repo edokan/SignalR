@@ -95,6 +95,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Hubs\Benchmark\HubBench.cs" />
+    <Compile Include="Hubs\Chat\Chat.cs" />
+    <Compile Include="Hubs\Chat\ContentProviders\CollegeHumorContentProvider.cs" />
+    <Compile Include="Hubs\Chat\ContentProviders\EmbedContentProvider.cs" />
+    <Compile Include="Hubs\Chat\ContentProviders\IContentProvider.cs" />
+    <Compile Include="Hubs\Chat\ContentProviders\ImageContentProvider.cs" />
+    <Compile Include="Hubs\Chat\ContentProviders\YoutubeContentProvider.cs" />
+    <Compile Include="Hubs\DrawingPad\DrawingPad.cs" />
     <Compile Include="Hubs\ShapeShare\ShapeShare.cs" />
     <Compile Include="Hubs\ConnectDisconnect\Status.cs" />
     <Compile Include="Hubs\DemoHub\DemoHub.cs" />
@@ -124,14 +132,26 @@
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>
+    <Content Include="Hubs\DrawingPad\drawingpad.js" />
+    <Content Include="Hubs\DrawingPad\index.htm" />
+    <Content Include="views\Hubs\Benchmark\Benchmark.js" />
+    <Content Include="views\Hubs\Benchmark\crossdomain.htm" />
+    <Content Include="views\Hubs\Benchmark\index.htm" />
+    <Content Include="views\Hubs\Chat\Chat.css" />
+    <Content Include="views\Hubs\Chat\Chat.js" />
+    <Content Include="views\Hubs\Chat\index.htm" />
+    <Content Include="views\Hubs\Chat\Mobile.css" />
+    <Content Include="views\Hubs\Chat\mobile.htm" />
     <Content Include="views\Content\bg.jpg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="ReadMe.txt" />
-    <Content Include="views\Hubs\ConnectDisconnect\index.html" />
+    <Content Include="views\Hubs\ConnectDisconnect\index.htm" />
     <Content Include="views\Content\Scripts\Status.js" />
     <Content Include="views\Content\Scripts\DemoHub.js" />
     <Content Include="views\Hubs\DemoHub\index.html" />
+    <Content Include="views\Hubs\DrawingPad\drawingpad.js" />
+    <Content Include="views\Hubs\DrawingPad\index.htm" />
     <Content Include="views\Hubs\ShapeShare\index.html" />
     <Content Include="views\Content\ShapeShare.css" />
     <Content Include="views\Content\Scripts\ShapeShare.js" />
@@ -214,13 +234,13 @@
     <VisualStudio>
       <FlavorProperties GUID="{349c5851-65df-11da-9384-00065b846f21}">
         <WebProjectProperties>
-          <UseIIS>True</UseIIS>
+          <UseIIS>False</UseIIS>
           <AutoAssignPort>True</AutoAssignPort>
           <DevelopmentServerPort>56565</DevelopmentServerPort>
           <DevelopmentServerVPath>/</DevelopmentServerVPath>
           <IISUrl>http://localhost:56565/</IISUrl>
           <NTLMAuthentication>False</NTLMAuthentication>
-          <UseCustomServer>False</UseCustomServer>
+          <UseCustomServer>True</UseCustomServer>
           <CustomServerUrl>http://localhost:8080</CustomServerUrl>
           <SaveServerSettingsInUserFile>False</SaveServerSettingsInUserFile>
         </WebProjectProperties>

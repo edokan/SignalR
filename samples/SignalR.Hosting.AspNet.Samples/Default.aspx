@@ -4,7 +4,6 @@
 <asp:Content ID="HeaderContent" runat="server" ContentPlaceHolderID="HeadContent">
 </asp:Content>
 <asp:Content ID="BodyContent" runat="server" ContentPlaceHolderID="MainContent">
-    
     <div id="home">
         <ul>
             <li class="raw"><a href="Raw/"><p class="title">Raw Connection</p></a></li>
